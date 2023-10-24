@@ -198,7 +198,7 @@ static void chunkfs_free (off_t offset, off_t size)
 {
     if (chunkfs_thd.last_chunk_exists) {
         if (chunkfs_thd.last_chunk_offset != offset) {
-            if (chunkfs.debug || 1) {
+            if (chunkfs.debug) {
                 printf("madvise(0x%08lX, 0x%08lX, MADV_DONTNEED)\n", chunkfs_thd.last_chunk_offset, chunkfs_thd.last_chunk_size);
             }
             madvise(chunkfs.image + chunkfs_thd.last_chunk_offset, chunkfs_thd.last_chunk_size, MADV_DONTNEED);
@@ -263,13 +263,11 @@ static int chunkfs_write (const char *path, const char *buf, size_t count, off_t
 }
 
 
-int chunkfs_truncate (const char *path, off_t count)
+static int chunkfs_truncate (const char *path, off_t count)
 {
     struct chunk_stat st;
     int rc;
 
-    return 0;
-    
     rc = resolve_path(path, &st);
     if (rc < 0) {
         return rc;
@@ -295,19 +293,19 @@ int chunkfs_truncate (const char *path, off_t count)
 }
 
 
-int chunkfs_chmod (const char *path, mode_t mode)
+static int chunkfs_chmod (const char *path, mode_t mode)
 {
     return -EPERM;
 }
 
 
-int chunkfs_chown (const char *path, uid_t uid, gid_t gid)
+static int chunkfs_chown (const char *path, uid_t uid, gid_t gid)
 {
     return -EPERM;
 }
 
 
-int chunkfs_utimens (const char *path, const struct timespec tv[2])
+static int chunkfs_utimens (const char *path, const struct timespec tv[2])
 {
     return -EPERM;
 }
