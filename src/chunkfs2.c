@@ -42,7 +42,10 @@ struct chunk_stat {
     mode_t mode;
     off_t chunk;
     off_t offset;
+    nlink_t nentry;
     off_t size;
+    blkcnt_t blocks;
+    nlink_t nlink;
 };
 
 struct chunkfs_t {
@@ -69,6 +72,7 @@ static __thread struct chunkfs_thd_t chunkfs_thd;
 static int resolve_path (const char *path, struct chunk_stat *st)
 {
     size_t pathlen;
+    off_t chunks_per_entry;
     off_t r;
     uint8_t tmp;
 
@@ -104,14 +108,29 @@ static int resolve_path (const char *path, struct chunk_stat *st)
     st->chunk = r;
     st->offset = st->chunk * chunkfs.chunk_size;
 
+    chunks_per_entry = (off_t)1 << ((MAX_DIR_DEPTH - st->level - 1) * 8);
+    st->nentry = (chunks_per_entry + (chunkfs.image_chunks - st->chunk) - 1) / chunks_per_entry;
+    if (st->nentry > 256) {
+        st->nentry = 256;
+    }
+
     if (st->level < MAX_DIR_DEPTH) {
         st->mode = S_IFDIR;
+        st->size = 0;
+        st->blocks = 0;
+        if (st->level < (MAX_DIR_DEPTH - 1)) {
+            st->nlink = st->nentry + 2;
+        } else {
+            st->nlink = 2;
+        }
     } else {
         st->mode = S_IFREG;
         st->size = (chunkfs.image_size - st->offset);
         if (st->size > chunkfs.chunk_size) {
             st->size = chunkfs.chunk_size;
         }
+        st->blocks = (st->size + 4095) / 4096 * 8;
+        st->nlink = 1;
     }
 
     return 0;
@@ -131,17 +150,13 @@ static int chunkfs_getattr (const char *path, struct stat *buf)
     memcpy(buf, &chunkfs.image_stat, sizeof(struct stat));
 
     buf->st_mode = (buf->st_mode & ~(S_IFMT | S_IXUSR | S_IXGRP | S_IXOTH)) | (st.mode & S_IFMT);
-
     if (S_ISDIR(st.mode)) {
         buf->st_mode = buf->st_mode | ((buf->st_mode & S_IRUSR) ? S_IXUSR : 0) | ((buf->st_mode & S_IRGRP) ? S_IXGRP : 0) | ((buf->st_mode & S_IROTH) ? S_IXOTH : 0);
-        buf->st_nlink = 256 + 2; // TODO: wrong!
-        buf->st_size = 0;
-        buf->st_blocks = 0;
-    } else {
-        buf->st_nlink = 1;
-        buf->st_size = st.size;
-        buf->st_blocks = (buf->st_size + 4095) / 4096 * 8;
     }
+
+    buf->st_size = st.size;
+    buf->st_blocks = st.blocks;
+    buf->st_nlink = st.nlink;
 
     return 0;
 }
@@ -150,7 +165,7 @@ static int chunkfs_getattr (const char *path, struct stat *buf)
 static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
     struct chunk_stat st;
-    off_t chunks_per_entry;
+    char nbuf[3];
     int rc;
 
     rc = resolve_path(path, &st);
@@ -162,12 +177,9 @@ static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler,
         return -ENOTDIR;
     }
 
-    chunks_per_entry = (off_t)1 << ((MAX_DIR_DEPTH - st.level - 1) * 8);
-
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
-    for (off_t x = 0; x < 256 && st.chunk + x * chunks_per_entry < chunkfs.image_chunks; x++) {
-        char nbuf[3];
+    for (off_t x = 0; x < 256 && x < st.nentry; x++) {
         snprintf(nbuf, sizeof(nbuf), "%02" PRIx64, x);
         filler(buf, nbuf, NULL, 0);
     }
@@ -394,6 +406,11 @@ int main (int argc, char *argv[])
     chunkfs.debug = 0;
 
     fuse_argv = malloc((argc + 1) * sizeof(char *));
+    if (fuse_argv == NULL) {
+        fprintf(stderr, "Failed to allocate memory\n");
+        return -1;
+    }
+
     fuse_argv[fuse_argc++] = strdup(argv[0]);
 
     // "dfso:" are fuse options, copy them over and filter out "z:", which is chunkfs option
