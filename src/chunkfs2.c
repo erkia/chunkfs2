@@ -293,19 +293,7 @@ static int chunkfs_truncate (const char *path, off_t count)
 }
 
 
-static int chunkfs_chmod (const char *path, mode_t mode)
-{
-    return -EPERM;
-}
-
-
-static int chunkfs_chown (const char *path, uid_t uid, gid_t gid)
-{
-    return -EPERM;
-}
-
-
-static int chunkfs_utimens (const char *path, const struct timespec tv[2])
+static int chunkfs_permission_denied ()
 {
     return -EPERM;
 }
@@ -318,9 +306,16 @@ static struct fuse_operations chunkfs_ops = {
     .read = chunkfs_read,
     .write = chunkfs_write,
     .truncate = chunkfs_truncate,
-    .chown = chunkfs_chown,
-    .chmod = chunkfs_chmod,
-    .utimens = chunkfs_utimens,
+    .mknod = chunkfs_permission_denied,
+    .mkdir = chunkfs_permission_denied,
+    .unlink = chunkfs_permission_denied,
+    .rmdir = chunkfs_permission_denied,
+    .symlink = chunkfs_permission_denied,
+    .rename = chunkfs_permission_denied,
+    .link = chunkfs_permission_denied,
+    .chown = chunkfs_permission_denied,
+    .chmod = chunkfs_permission_denied,
+    .utimens = chunkfs_permission_denied,
 };
 
 
