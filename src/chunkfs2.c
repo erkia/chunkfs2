@@ -1,5 +1,5 @@
 /*
- *  ChunkFS2 - mount files and images as a tree of chunk files
+ *  ChunkFS2 - mount files or block devices as a tree of chunk files
  *  Copyright (C) 2023  Erki Aring <erki@example.ee>
  *
  *  Original ChunkFS - https://chunkfs.florz.de/
@@ -28,6 +28,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
@@ -321,38 +323,62 @@ static struct fuse_operations chunkfs_ops = {
 
 static int mmap_image(const char *image_filename)
 {
-    int rc;
+    int rc = -1;
     int fd;
 
     fd = open(image_filename, (chunkfs.readonly ? O_RDONLY : O_RDWR));
     if (fd < 0) {
         perror("open");
-        return fd;
+        goto err;
     }
 
     rc = fstat(fd, &chunkfs.image_stat);
     if (rc < 0) {
         perror("fstat");
-        return rc;
+        goto err;
     }
 
-    chunkfs.image_size = chunkfs.image_stat.st_size;
+    if (S_ISREG(chunkfs.image_stat.st_mode)) {
+        chunkfs.image_size = chunkfs.image_stat.st_size;
+    } else if (S_ISBLK(chunkfs.image_stat.st_mode)) {
+        uint64_t blksize;
+        rc = ioctl(fd, BLKGETSIZE64, &blksize);
+        if (rc == -1) {
+            perror("ioctl");
+            goto err;
+        }
+        chunkfs.image_size = blksize;
+    } else {
+        fprintf(stderr, "Not a file nor a block device: %s\n", image_filename);
+        rc = -1;
+        goto err;
+    }
 
     chunkfs.image_chunks = (chunkfs.image_size + chunkfs.chunk_size - 1) / chunkfs.chunk_size;
     if (chunkfs.image_chunks > MAX_CHUNKS) {
         fprintf(stderr, "Maximum number of allowed chunks (%d) exceeded\n", MAX_CHUNKS);
-        return -1;
+        rc = -1;
+        goto err;
     }
 
     if (chunkfs.image_size) {
         chunkfs.image = mmap(NULL, chunkfs.image_size, PROT_READ | (!chunkfs.readonly ? PROT_WRITE : 0), MAP_SHARED, fd, 0);
         if (chunkfs.image == MAP_FAILED) {
             perror("mmap");
-            return -1;
+            rc = -1;
+            goto err;
         }
     }
 
     return 0;
+
+err:
+
+    if (fd >= 0) {
+        close(fd);
+    }
+
+    return rc;
 }
 
 
