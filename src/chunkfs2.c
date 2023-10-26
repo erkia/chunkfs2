@@ -402,7 +402,7 @@ int main (int argc, char *argv[])
             if (opt == 'o') {
                 if (!strcmp(optarg, "debug")) {
                     chunkfs.debug = 1;
-                } else if (!strcmp(optarg, "debug")) {
+                } else if (!strcmp(optarg, "ro")) {
                     chunkfs.readonly = 1;
                 }
             }
