@@ -29,7 +29,7 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#ifdef __linux__
+#if CONFIG_LINUX_BLKDEV
     #include <linux/fs.h>
 #endif
 
@@ -86,7 +86,7 @@ static int resolve_path (const char *path, struct chunk_stat *st)
             return -ENOENT;
         }
     } else {
-        for (int x = 0; x < pathlen; x++) {
+        for (size_t x = 0; x < pathlen; x++) {
             tmp = path[x];
             if (x % 3) {
                 if (tmp >= '0' && tmp <= '9') {
@@ -181,8 +181,8 @@ static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler,
 
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
-    for (off_t x = 0; x < 256 && x < st.nentry; x++) {
-        snprintf(nbuf, sizeof(nbuf), "%02" PRIx64, x);
+    for (nlink_t x = 0; x < 256 && x < st.nentry; x++) {
+        snprintf(nbuf, sizeof(nbuf), "%02" PRIx8, (unsigned char)x);
         filler(buf, nbuf, NULL, 0);
     }
 
@@ -322,16 +322,16 @@ static struct fuse_operations chunkfs_ops = {
     .read = chunkfs_read,
     .write = chunkfs_write,
     .truncate = chunkfs_truncate,
-    .mknod = chunkfs_permission_denied,
-    .mkdir = chunkfs_permission_denied,
-    .unlink = chunkfs_permission_denied,
-    .rmdir = chunkfs_permission_denied,
-    .symlink = chunkfs_permission_denied,
-    .rename = chunkfs_permission_denied,
-    .link = chunkfs_permission_denied,
-    .chown = chunkfs_permission_denied,
-    .chmod = chunkfs_permission_denied,
-    .utimens = chunkfs_permission_denied,
+    .mknod = (void *)chunkfs_permission_denied,
+    .mkdir = (void *)chunkfs_permission_denied,
+    .unlink = (void *)chunkfs_permission_denied,
+    .rmdir = (void *)chunkfs_permission_denied,
+    .symlink = (void *)chunkfs_permission_denied,
+    .rename = (void *)chunkfs_permission_denied,
+    .link = (void *)chunkfs_permission_denied,
+    .chown = (void *)chunkfs_permission_denied,
+    .chmod = (void *)chunkfs_permission_denied,
+    .utimens = (void *)chunkfs_permission_denied,
 };
 
 
@@ -354,7 +354,7 @@ static int mmap_image(const char *image_filename)
 
     if (S_ISREG(chunkfs.image_stat.st_mode)) {
         chunkfs.image_size = chunkfs.image_stat.st_size;
-#ifdef __linux__
+#if CONFIG_LINUX_BLKDEV
     } else if (S_ISBLK(chunkfs.image_stat.st_mode)) {
         uint64_t blksize;
         rc = ioctl(fd, BLKGETSIZE64, &blksize);

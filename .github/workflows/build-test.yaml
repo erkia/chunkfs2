@@ -1,0 +1,42 @@
+name: Build Test
+
+on:
+  push
+
+jobs:
+
+  build-on-ubuntu:
+    name: Build on Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install requirements
+        run: |
+          sudo apt-get install build-essential cmake libfuse-dev
+
+      - name: Check out the code
+        uses: actions/checkout@v3
+
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build .
+
+  build-on-macos:
+    name: Build on MacOS
+    runs-on: macos-latest
+    steps:
+      - name: Install requirements
+        run: |
+          brew install macfuse
+
+      - name: Check out the code
+        uses: actions/checkout@v3
+
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build .
