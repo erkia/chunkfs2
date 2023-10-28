@@ -17,6 +17,8 @@ add_executable (chunkfs2
 
 target_compile_definitions (chunkfs2 PRIVATE "-D_FILE_OFFSET_BITS=64")
 
+target_include_directories (chunkfs2 PRIVATE ${FUSE_INCLUDE_DIRS})
+target_link_directories (chunkfs2 PRIVATE ${FUSE_LIBRARY_DIRS})
 target_link_libraries (chunkfs2 ${FUSE_LIBRARIES})
 
 install(TARGETS chunkfs2 DESTINATION bin)

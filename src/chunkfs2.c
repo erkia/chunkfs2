@@ -29,7 +29,9 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#include <linux/fs.h>
+#ifdef __linux__
+    #include <linux/fs.h>
+#endif
 
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
@@ -213,7 +215,7 @@ static void chunkfs_free (off_t offset, off_t size)
     if (chunkfs_thd.last_chunk_exists) {
         if (chunkfs_thd.last_chunk_offset != offset) {
             if (chunkfs.debug) {
-                printf("madvise(0x%08lX, 0x%08lX, MADV_DONTNEED)\n", chunkfs_thd.last_chunk_offset, chunkfs_thd.last_chunk_size);
+                printf("madvise(0x%08" PRIx64 ", 0x%08" PRIx64 ", MADV_DONTNEED)\n", chunkfs_thd.last_chunk_offset, chunkfs_thd.last_chunk_size);
             }
             madvise(chunkfs.image + chunkfs_thd.last_chunk_offset, chunkfs_thd.last_chunk_size, MADV_DONTNEED);
         }
@@ -242,7 +244,7 @@ static int chunkfs_read (const char *path, char *buf, size_t count, off_t offset
     chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
-        printf("READ = %08lX - %08lX\n", st.offset + offset, st.offset + offset + count - 1);
+        printf("READ = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + offset, st.offset + offset + count - 1);
     }
 
     memcpy(buf, chunkfs.image + st.offset + offset, count);
@@ -268,7 +270,7 @@ static int chunkfs_write (const char *path, const char *buf, size_t count, off_t
     chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
-        printf("WRITE = %08lX - %08lX\n", st.offset + offset, st.offset + offset + count - 1);
+        printf("WRITE = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + offset, st.offset + offset + count - 1);
     }
 
     memcpy(chunkfs.image + st.offset + offset, buf, count);
@@ -298,7 +300,7 @@ static int chunkfs_truncate (const char *path, off_t count)
     chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
-        printf("TRUNCATE = %08lX - %08lX\n", st.offset + count, st.offset + (chunkfs.chunk_size - count) - 1);
+        printf("TRUNCATE = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + count, st.offset + (chunkfs.chunk_size - count) - 1);
     }
 
     memset(chunkfs.image + st.offset + count, 0, chunkfs.chunk_size - count);
@@ -352,6 +354,7 @@ static int mmap_image(const char *image_filename)
 
     if (S_ISREG(chunkfs.image_stat.st_mode)) {
         chunkfs.image_size = chunkfs.image_stat.st_size;
+#ifdef __linux__
     } else if (S_ISBLK(chunkfs.image_stat.st_mode)) {
         uint64_t blksize;
         rc = ioctl(fd, BLKGETSIZE64, &blksize);
@@ -360,6 +363,7 @@ static int mmap_image(const char *image_filename)
             goto err;
         }
         chunkfs.image_size = blksize;
+#endif
     } else {
         fprintf(stderr, "Not a file nor a block device: %s\n", image_filename);
         rc = -1;
