@@ -242,7 +242,11 @@ static int chunkfs_read (const char *path, char *buf, size_t count, off_t offset
     }
 
     if ((off_t)(offset + count) > st.size) {
-        return -EINVAL;
+        if (offset <= st.size) {
+            count = st.size - offset;
+        } else {
+            return -EINVAL;
+        }
     }
 
     chunkfs_free(st.offset, st.size);
