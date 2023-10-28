@@ -27,7 +27,6 @@
 #include <limits.h>
 #include <unistd.h>
 #include <errno.h>
-#include <sys/mman.h>
 #include <sys/ioctl.h>
 #if CONFIG_LINUX_BLKDEV
     #include <linux/fs.h>
@@ -54,8 +53,7 @@ struct chunk_stat {
 
 struct chunkfs_t {
     const char *filename;
-    int fd;
-    void *image;
+    int image_fd;
     struct stat image_stat;
     off_t image_size;
     off_t chunk_size;
@@ -64,15 +62,8 @@ struct chunkfs_t {
     int readonly;
 };
 
-struct chunkfs_thd_t {
-    int last_chunk_exists;
-    off_t last_chunk_offset;
-    off_t last_chunk_size;
-};
-
 static struct chunkfs_t chunkfs;
-static __thread struct chunkfs_thd_t chunkfs_thd;
-static char zero[8192];
+static char zero[4096];
 
 
 static int resolve_path (const char *path, struct chunk_stat *st)
@@ -210,28 +201,9 @@ static int chunkfs_open (const char *path, struct fuse_file_info *fi)
         }
     }
 
+    fi->fh = chunkfs.image_fd;
+
     return 0;
-}
-
-
-static void chunkfs_free (off_t offset, off_t size)
-{
-    if (chunkfs.image == NULL) {
-        return;
-    }
-
-    if (chunkfs_thd.last_chunk_exists) {
-        if (chunkfs_thd.last_chunk_offset != offset) {
-            if (chunkfs.debug) {
-                printf("madvise(0x%08" PRIx64 ", 0x%08" PRIx64 ", MADV_DONTNEED)\n", chunkfs_thd.last_chunk_offset, chunkfs_thd.last_chunk_size);
-            }
-            madvise(chunkfs.image + chunkfs_thd.last_chunk_offset, chunkfs_thd.last_chunk_size, MADV_DONTNEED);
-        }
-    }
-
-    chunkfs_thd.last_chunk_exists = 1;
-    chunkfs_thd.last_chunk_offset = offset;
-    chunkfs_thd.last_chunk_size = size;
 }
 
 
@@ -253,27 +225,17 @@ static int chunkfs_read (const char *path, char *buf, size_t count, off_t offset
         if (offset <= st.size) {
             count = st.size - offset;
         } else {
-            return -EINVAL;
+            return 0;
         }
     }
-
-    chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
         printf("READ = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + offset, st.offset + offset + count - 1);
     }
 
-    if (chunkfs.image) {
-
-        memcpy(buf, chunkfs.image + st.offset + offset, count);
-
-    } else {
-
-        rc = pread(chunkfs.fd, buf, count, st.offset + offset);
-        if (rc != (int)count) {
-            return -EIO;
-        }
-
+    rc = pread(fi->fh, buf, count, st.offset + offset);
+    if (rc != (int)count) {
+        return -EIO;
     }
 
     return count;
@@ -295,34 +257,25 @@ static int chunkfs_write (const char *path, const char *buf, size_t count, off_t
     }
 
     if ((off_t)(offset + count) > st.size) {
-        return -EINVAL;
+        return -EFBIG;
     }
-
-    chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
         printf("WRITE = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + offset, st.offset + offset + count - 1);
     }
 
-    if (chunkfs.image) {
-
-        memcpy(chunkfs.image + st.offset + offset, buf, count);
-
-    } else {
-
-        rc = pwrite(chunkfs.fd, buf, count, st.offset + offset);
-        if (rc != (int)count) {
-            return -EIO;
-        }
-
+    rc = pwrite(fi->fh, buf, count, st.offset + offset);
+    if (rc != (int)count) {
+        return -EIO;
     }
 
     return count;
 }
 
 
-static int chunkfs_truncate (const char *path, off_t count)
+static int chunkfs_ftruncate (const char *path, off_t count, struct fuse_file_info *fi)
 {
+    char buf[sizeof(zero)];
     struct chunk_stat st;
     int rc;
 
@@ -336,37 +289,41 @@ static int chunkfs_truncate (const char *path, off_t count)
     }
 
     if (count > st.size) {
-        return -EINVAL;
+        return -EFBIG;
     }
-
-    chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
         printf("TRUNCATE = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + count, st.offset + (st.size - count) - 1);
     }
 
-    if (chunkfs.image) {
+    off_t n = (st.size - count);
+    off_t offset = 0;
 
-        memset(chunkfs.image + st.offset + count, 0, st.size - count);
+    while (n > 0) {
 
-    } else {
+        off_t nz;
+        if (n > (off_t)sizeof(zero)) {
+            nz = sizeof(zero);
+        } else {
+            nz = n;
+        }
 
-        off_t n = (st.size - count);
-        off_t offset = 0;
-        while (n > 0) {
-            off_t nz;
-            if (n > (off_t)sizeof(zero)) {
-                nz = sizeof(zero);
-            } else {
-                nz = n;
-            }
-            rc = pwrite(chunkfs.fd, zero, nz, st.offset + count + offset);
+        // Check if area we are "truncating" does already contain all zeros
+        rc = pread(fi->fh, buf, nz, st.offset + count + offset);
+        if (rc != (int)nz) {
+            return -EIO;
+        }
+
+        // No point in overwriting zeros, as it will ruin sparse files
+        if (memcmp(buf, zero, nz)) {
+            rc = pwrite(fi->fh, zero, nz, st.offset + count + offset);
             if (rc != (int)nz) {
                 return -EIO;
             }
-            n -= nz;
-            offset += nz;
         }
+
+        n -= nz;
+        offset += nz;
 
     }
 
@@ -386,7 +343,7 @@ static struct fuse_operations chunkfs_ops = {
     .open = chunkfs_open,
     .read = chunkfs_read,
     .write = chunkfs_write,
-    .truncate = chunkfs_truncate,
+    .ftruncate = chunkfs_ftruncate,
     .mknod = (void *)chunkfs_permission_denied,
     .mkdir = (void *)chunkfs_permission_denied,
     .unlink = (void *)chunkfs_permission_denied,
@@ -457,14 +414,7 @@ static int mmap_image(const char *image_filename)
         goto err;
     }
 
-    if (chunkfs.image_size) {
-        chunkfs.image = mmap(NULL, chunkfs.image_size, PROT_READ | (!chunkfs.readonly ? PROT_WRITE : 0), MAP_SHARED, fd, 0);
-        if (chunkfs.image == MAP_FAILED) {
-            chunkfs.image = NULL;
-        }
-    }
-
-    chunkfs.fd = fd;
+    chunkfs.image_fd = fd;
 
     return 0;
 
