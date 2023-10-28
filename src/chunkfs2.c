@@ -241,6 +241,10 @@ static int chunkfs_read (const char *path, char *buf, size_t count, off_t offset
         return -EISDIR;
     }
 
+    if ((off_t)(offset + count) > st.size) {
+        return -EINVAL;
+    }
+
     chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
@@ -265,6 +269,10 @@ static int chunkfs_write (const char *path, const char *buf, size_t count, off_t
 
     if (S_ISDIR(st.mode)) {
         return -EISDIR;
+    }
+
+    if ((off_t)(offset + count) > st.size) {
+        return -EINVAL;
     }
 
     chunkfs_free(st.offset, st.size);
@@ -293,17 +301,17 @@ static int chunkfs_truncate (const char *path, off_t count)
         return -EISDIR;
     }
 
-    if (count > chunkfs.chunk_size) {
+    if (count > st.size) {
         return -EINVAL;
     }
 
     chunkfs_free(st.offset, st.size);
 
     if (chunkfs.debug) {
-        printf("TRUNCATE = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + count, st.offset + (chunkfs.chunk_size - count) - 1);
+        printf("TRUNCATE = %08" PRIx64 " - %08" PRIx64 "\n", st.offset + count, st.offset + (st.size - count) - 1);
     }
 
-    memset(chunkfs.image + st.offset + count, 0, chunkfs.chunk_size - count);
+    memset(chunkfs.image + st.offset + count, 0, st.size - count);
 
     return 0;
 }
