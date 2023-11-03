@@ -9,7 +9,7 @@ include (CheckSymbolExists)
 # Set compiler flags
 add_compile_options (-Wall -Wextra -Wno-unused-parameter -Werror -O2)
 
-pkg_check_modules (FUSE REQUIRED fuse)
+pkg_check_modules (FUSE REQUIRED fuse3)
 
 # Add source files
 add_executable (chunkfs2

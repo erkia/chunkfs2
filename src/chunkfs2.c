@@ -34,7 +34,7 @@
     #include <sys/disk.h>
 #endif
 
-#define FUSE_USE_VERSION 29
+#define FUSE_USE_VERSION 30
 #include <fuse.h>
 
 #define MAX_DIR_DEPTH   3
@@ -134,7 +134,7 @@ static int resolve_path (const char *path, struct chunk_stat *st)
 }
 
 
-static int chunkfs_getattr (const char *path, struct stat *buf)
+static int chunkfs_getattr (const char *path, struct stat *buf, struct fuse_file_info *fi)
 {
     struct chunk_stat st;
     int rc;
@@ -159,7 +159,7 @@ static int chunkfs_getattr (const char *path, struct stat *buf)
 }
 
 
-static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags)
 {
     struct chunk_stat st;
     char nbuf[3];
@@ -174,11 +174,11 @@ static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler,
         return -ENOTDIR;
     }
 
-    filler(buf, ".", NULL, 0);
-    filler(buf, "..", NULL, 0);
+    filler(buf, ".", NULL, 0, 0);
+    filler(buf, "..", NULL, 0, 0);
     for (nlink_t x = 0; x < 256 && x < st.nentry; x++) {
         snprintf(nbuf, sizeof(nbuf), "%02" PRIx8, (unsigned char)x);
-        filler(buf, nbuf, NULL, 0);
+        filler(buf, nbuf, NULL, 0, 0);
     }
 
     return 0;
@@ -273,7 +273,7 @@ static int chunkfs_write (const char *path, const char *buf, size_t count, off_t
 }
 
 
-static int chunkfs_ftruncate (const char *path, off_t count, struct fuse_file_info *fi)
+static int chunkfs_truncate (const char *path, off_t count, struct fuse_file_info *fi)
 {
     char buf[sizeof(zero)];
     struct chunk_stat st;
@@ -343,7 +343,7 @@ static struct fuse_operations chunkfs_ops = {
     .open = chunkfs_open,
     .read = chunkfs_read,
     .write = chunkfs_write,
-    .ftruncate = chunkfs_ftruncate,
+    .truncate = chunkfs_truncate,
     .mknod = (void *)chunkfs_permission_denied,
     .mkdir = (void *)chunkfs_permission_denied,
     .unlink = (void *)chunkfs_permission_denied,

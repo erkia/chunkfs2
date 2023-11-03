@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Install requirements
         run: |
-          sudo apt-get install build-essential cmake libfuse-dev
+          sudo apt-get install build-essential cmake libfuse3-dev
 
       - name: Check out the code
         uses: actions/checkout@v3
