@@ -34,8 +34,8 @@
     #include <sys/disk.h>
 #endif
 
-#define FUSE_USE_VERSION 30
-#include <fuse.h>
+#include "chunkfs2-fuse.h"
+
 
 #define MAX_DIR_DEPTH   3
 #define MAX_CHUNKS      16777216
@@ -63,7 +63,7 @@ struct chunkfs_t {
 };
 
 static struct chunkfs_t chunkfs;
-static char zero[4096];
+static const char zero[4096];
 
 
 static int resolve_path (const char *path, struct chunk_stat *st)
@@ -134,7 +134,11 @@ static int resolve_path (const char *path, struct chunk_stat *st)
 }
 
 
-static int chunkfs_getattr (const char *path, struct stat *buf, struct fuse_file_info *fi)
+#if (FUSE_VERSION >= 300)
+    static int chunkfs_getattr (const char *path, struct stat *buf, struct fuse_file_info *fi)
+#else
+    static int chunkfs_getattr (const char *path, struct stat *buf)
+#endif
 {
     struct chunk_stat st;
     int rc;
@@ -159,7 +163,11 @@ static int chunkfs_getattr (const char *path, struct stat *buf, struct fuse_file
 }
 
 
-static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags)
+#if (FUSE_VERSION >= 300)
+    static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags)
+#else
+    static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+#endif
 {
     struct chunk_stat st;
     char nbuf[3];
@@ -174,11 +182,11 @@ static int chunkfs_readdir (const char *path, void *buf, fuse_fill_dir_t filler,
         return -ENOTDIR;
     }
 
-    filler(buf, ".", NULL, 0, 0);
-    filler(buf, "..", NULL, 0, 0);
+    chunkfs_filler(filler, buf, ".", NULL, 0);
+    chunkfs_filler(filler, buf, "..", NULL, 0);
     for (nlink_t x = 0; x < 256 && x < st.nentry; x++) {
         snprintf(nbuf, sizeof(nbuf), "%02" PRIx8, (unsigned char)x);
-        filler(buf, nbuf, NULL, 0, 0);
+        chunkfs_filler(filler, buf, nbuf, NULL, 0);
     }
 
     return 0;
@@ -343,7 +351,11 @@ static struct fuse_operations chunkfs_ops = {
     .open = chunkfs_open,
     .read = chunkfs_read,
     .write = chunkfs_write,
+#if (FUSE_VERSION >= 300)
     .truncate = chunkfs_truncate,
+#else
+    .ftruncate = chunkfs_truncate,
+#endif
     .mknod = (void *)chunkfs_permission_denied,
     .mkdir = (void *)chunkfs_permission_denied,
     .unlink = (void *)chunkfs_permission_denied,

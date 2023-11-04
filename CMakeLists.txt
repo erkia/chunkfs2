@@ -9,7 +9,14 @@ include (CheckSymbolExists)
 # Set compiler flags
 add_compile_options (-Wall -Wextra -Wno-unused-parameter -Werror -O2)
 
-pkg_check_modules (FUSE REQUIRED fuse3)
+pkg_check_modules (FUSE fuse3)
+if (NOT FUSE_LIBRARIES)
+    pkg_check_modules (FUSE fuse)
+endif()
+
+if (NOT FUSE_LIBRARIES)
+    message (FATAL_ERROR "A required package 'fuse3' or 'fuse' was not found")
+endif()
 
 # Add source files
 add_executable (chunkfs2
@@ -18,12 +25,12 @@ add_executable (chunkfs2
 
 target_compile_definitions (chunkfs2 PRIVATE "-D_FILE_OFFSET_BITS=64")
 
-check_symbol_exists(BLKGETSIZE64 "linux/fs.h" CONFIG_LINUX_BLKDEV)
-if(CONFIG_LINUX_BLKDEV)
+check_symbol_exists (BLKGETSIZE64 "linux/fs.h" CONFIG_LINUX_BLKDEV)
+if (CONFIG_LINUX_BLKDEV)
     target_compile_definitions (chunkfs2 PRIVATE "-DCONFIG_LINUX_BLKDEV=1")
 else()
-    check_symbol_exists(DKIOCGETBLOCKCOUNT "sys/disk.h" CONFIG_MACOS_DISK)
-    if(CONFIG_MACOS_DISK)
+    check_symbol_exists (DKIOCGETBLOCKCOUNT "sys/disk.h" CONFIG_MACOS_DISK)
+    if (CONFIG_MACOS_DISK)
         target_compile_definitions (chunkfs2 PRIVATE "-DCONFIG_MACOS_DISK=1")
     endif()
 endif()

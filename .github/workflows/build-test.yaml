@@ -9,34 +9,47 @@ jobs:
     name: Build on Ubuntu
     runs-on: ubuntu-latest
     steps:
-      - name: Install requirements
+      - name: Install requirements (build)
         run: |
-          sudo apt-get install build-essential cmake libfuse3-dev
+          sudo apt-get install build-essential cmake
 
       - name: Check out the code
         uses: actions/checkout@v3
 
-      - name: Build
+      - name: Install requirements (libfuse3)
         run: |
-          mkdir build
-          cd build
-          cmake ..
-          cmake --build .
+          sudo apt-get install libfuse3-dev
+
+      - name: Build (libfuse3)
+        run: |
+          cmake -B build
+          cmake --build build
+          rm -rf build
+
+      - name: Install requirements (libfuse)
+        run: |
+          sudo apt-get remove --auto-remove libfuse3-dev
+          sudo apt-get install libfuse-dev
+
+      - name: Build (libfuse)
+        run: |
+          cmake -B build
+          cmake --build build
+          rm -rf build
 
   build-on-macos:
     name: Build on MacOS
     runs-on: macos-latest
     steps:
-      - name: Install requirements
-        run: |
-          brew install macfuse
-
       - name: Check out the code
         uses: actions/checkout@v3
 
-      - name: Build
+      - name: Install requirements (macfuse)
         run: |
-          mkdir build
-          cd build
-          cmake ..
-          cmake --build .
+          brew install macfuse
+
+      - name: Build (macfuse)
+        run: |
+          cmake -B build
+          cmake --build build
+          rm -rf build
