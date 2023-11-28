@@ -369,7 +369,7 @@ static struct fuse_operations chunkfs_ops = {
 };
 
 
-static int mmap_image(const char *image_filename)
+static int open_image(const char *image_filename)
 {
     int rc = -1;
     int fd;
@@ -524,7 +524,7 @@ int main (int argc, char *argv[])
         }
     }
 
-    rc = mmap_image(chunkfs.filename);
+    rc = open_image(chunkfs.filename);
     if (rc < 0) {
         return rc;
     }
